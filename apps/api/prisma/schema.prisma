@@ -1,0 +1,67 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+   provider = "prisma-client-js"
+   output   = "../src/generated/prisma"
+ }
+
+ datasource db {
+   provider = "postgresql"
+   url      = env("DATABASE_URL")
+ }
+
+ model Location {
+   id        String   @id @default(uuid())
+   name      String
+   country   String?
+   lat       Float
+   lon       Float
+   timezone  String
+   gismeteoId Int?
+   createdAt DateTime @default(now())
+
+   forecasts Forecast[]
+   observations Observation[]
+
+   @@unique([lat, lon])
+ }
+
+ model Forecast {
+   id           String   @id @default(uuid())
+   locationId   String
+   location     Location @relation(fields: [locationId], references: [id])
+
+   issuedDate   DateTime
+   targetDate   DateTime
+   leadTimeDays Int
+   provider     String   @default("open-meteo")
+
+   tempMin      Float?
+   tempMax      Float?
+   precipMm     Float?
+
+   rawJson      Json?
+   fetchedAt    DateTime @default(now())
+
+   @@unique([locationId, provider, issuedDate, targetDate])
+ }
+
+ model Observation {
+   id         String   @id @default(uuid())
+   locationId String
+   location   Location @relation(fields: [locationId], references: [id])
+
+   date       DateTime
+   tempMin    Float?
+   tempMax    Float?
+   precipMm   Float?
+
+   rawJson    Json?
+   fetchedAt  DateTime @default(now())
+
+   @@unique([locationId, date])
+ }
