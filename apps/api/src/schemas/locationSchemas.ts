@@ -1,12 +1,23 @@
 import { z } from "zod";
 
+function isValidTimeZone(tz: string): boolean {
+    try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz });
+        return true;
+    } catch {
+        return false;
+    }
+}
 // Схема тела запроса для POST /api/locations
 export const LocationCreateSchema = z.object({
     name: z.string().min(1, "name: expected not to be empty"),
     country: z.string().optional(),
     lat: z.number().min(-90, "lat: from -90 till 90").max(90, "lat: from -90 till 90"),
     lon: z.number().min(-180, "lon: from -180 till 180").max(180, "lon: from -180 till 180"),
-    timezone: z.string().min(1, "timezone: expected not to be empty"),
+    timezone: z
+        .string()
+        .min(1, "timezone: expected not to be empty")
+        .refine(isValidTimeZone, "timezone: unknown IANA zone (e.g. Asia/Jerusalem)"),
 });
 
 export const IdParamSchema = z.object({
