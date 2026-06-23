@@ -2,6 +2,7 @@ import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
     CartesianGrid, Tooltip, Legend,
 } from "recharts";
+import {useState} from "react";
 import type { LeadTimeStat } from "@weather-verify/shared";
 
 
@@ -17,6 +18,9 @@ const COLORS: Record<string, string> = {
 const FALLBACK_COLORS = ["#8e44ad", "#f39c12", "#16a085", "#2c3e50"];
 
 export function LeadTimeChart({ statsByProvider }: Props) {
+    const [metric, setMetric] = useState<"max" | "min">("max");
+    const field = metric === "max" ? "maeMax" : "maeMin";
+    const metricLabel = metric === "max" ? "Tmax" : "Tmin";
     const providers = Object.keys(statsByProvider);
     if (providers.length === 0) {
         return <p>Пока нет верифицированных прогнозов</p>;
@@ -33,7 +37,8 @@ export function LeadTimeChart({ statsByProvider }: Props) {
                 byLead.set(s.leadTimeDays, row);
             }
             // Колонку называем именем провайдера; значение — его MAE Tmax.
-            if (s.maeMax != null) row[provider] = s.maeMax;
+            const mae = s[field];
+            if (mae != null) row[provider] = mae;
         }
     }
 
@@ -42,7 +47,25 @@ export function LeadTimeChart({ statsByProvider }: Props) {
     );
 
     return (
-        <ResponsiveContainer width="100%" height={300}>
+        <div>
+            <div style={{ marginBottom: 8 }}>
+                <button
+                    onClick={() => setMetric("max")}
+                    style={{ fontWeight: metric === "max" ? "bold" : "normal", marginRight: 8 }}
+                >
+                    Tmax
+                </button>
+                <button
+                    onClick={() => setMetric("min")}
+                    style={{ fontWeight: metric === "min" ? "bold" : "normal" }}
+                >
+                    Tmin
+                </button>
+                <span style={{ marginLeft: 12, color: "#888" }}>
+                    MAE {metricLabel} по горизонту (чем ниже, тем точнее)
+                </span>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
             <LineChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
@@ -64,5 +87,6 @@ export function LeadTimeChart({ statsByProvider }: Props) {
                 ))}
             </LineChart>
         </ResponsiveContainer>
+        </div>
     );
 }

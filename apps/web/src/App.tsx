@@ -3,7 +3,9 @@ import { ErrorChart } from "./ErrorChart";
 import {LeadTimeChart} from "./LeadTimeChart";
 import type {ComparisonRow, LeadTimeStat} from "@weather-verify/shared";
 
-// Формы данных, которые отдаёт наш API.
+type Mode = "forecast" | "comparison"| "leadtime";
+
+
 interface Location {
     id: string;
     name: string;
@@ -45,6 +47,7 @@ function errorClass(err: number | null): string {
 export function App() {
     const [locations, setLocations] = useState<Location[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [mode, setMode] = useState<Mode>("forecast");
     const [forecast, setForecast] = useState<DailyForecast[]>([]);
     const [comparison, setComparison] = useState<Record<string, ComparisonRow[]>>({});
     const [statsByProvider, setStatsByProvider] = useState<Record<string, LeadTimeStat[]>>({});
@@ -59,62 +62,48 @@ export function App() {
             .catch(() => setError("Не удалось загрузить локации"));
     }, []);
 
-    // Загрузить прогноз для выбранной локации.
-    async function loadForecast(id: string) {
-        setSelectedId(id);
-        setLoading(true);
-        setError(null);
-        setForecast([]);
-        try {
-            const res = await fetch(`/api/locations/${id}/forecast`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: ForecastResponse = await res.json();
-            setForecast(data.forecast);
-        } catch {
-            setError("Не удалось загрузить прогноз");
-        } finally {
-            setLoading(false);
-        }
-    }
+    // Грузим данные текущего режима при смене локации ИЛИ режима.
+    useEffect(() => {
+        const id = selectedId;
+        if (!id) return;
 
-    async function loadComparison(id: string) {
-        setSelectedId(id);
+        let cancelled = false;
         setLoading(true);
         setError(null);
-        setForecast([]);
-        setComparison({});
-        setStatsByProvider({});
-        try {
-            const res = await fetch(`/api/locations/${id}/comparison`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: { comparisonByProvider: Record<string, ComparisonRow[]> } =
-                await res.json();
-            setComparison(data.comparisonByProvider);
-        } catch {
-            setError("Не удалось загрузить сравнение");
-        } finally {
-            setLoading(false);
-        }
-    }
 
-    async function loadStats(id: string) {
-        setSelectedId(id);
-        setLoading(true);
-        setError(null);
-        setForecast([]);
-        setComparison({});
-        setStatsByProvider({});
-        try {
-            const res = await fetch(`/api/locations/${id}/lead-time-stats`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: { statsByProvider: Record<string, LeadTimeStat[]> } = await res.json();
-            setStatsByProvider(data.statsByProvider);
-        } catch {
-            setError("Не удалось загрузить статистику");
-        } finally {
-            setLoading(false);
+        async function load() {
+            try {
+                if (mode === "forecast") {
+                    const res = await fetch(`/api/locations/${id}/forecast`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data: ForecastResponse = await res.json();
+                    if (!cancelled) setForecast(data.forecast);
+                } else if (mode === "comparison") {
+                    const res = await fetch(`/api/locations/${id}/comparison`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data: { comparisonByProvider: Record<string, ComparisonRow[]> } =
+                        await res.json();
+                    if (!cancelled) setComparison(data.comparisonByProvider);
+                } else {
+                    const res = await fetch(`/api/locations/${id}/lead-time-stats`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data: { statsByProvider: Record<string, LeadTimeStat[]> } =
+                        await res.json();
+                    if (!cancelled) setStatsByProvider(data.statsByProvider);
+                }
+            } catch {
+                if (!cancelled) setError("Не удалось загрузить данные");
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
         }
-    }
+
+        load();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedId, mode]);
 
 
     return (
@@ -127,7 +116,10 @@ export function App() {
                     <button
                         key={loc.id}
                         className={loc.id === selectedId ? "loc active" : "loc"}
-                        onClick={() => loadForecast(loc.id)}
+                        onClick={() => {
+                            setSelectedId(loc.id);
+                            setMode("forecast");
+                        }}
                     >
                         {loc.name}
                         {loc.country ? `, ${loc.country}` : ""}
@@ -136,13 +128,22 @@ export function App() {
             </div>
             {selectedId && (
                 <div className="modes">
-                    <button className="mode" onClick={() => loadForecast(selectedId)}>
+                    <button
+                        className={mode === "forecast" ? "mode active" : "mode"}
+                        onClick={() => setMode("forecast")}
+                    >
                         Прогноз
                     </button>
-                    <button className="mode" onClick={() => loadComparison(selectedId)}>
+                    <button
+                        className={mode === "comparison" ? "mode active" : "mode"}
+                        onClick={() => setMode("comparison")}
+                    >
                         Сравнение
                     </button>
-                    <button className="mode" onClick={() => loadStats(selectedId)}>
+                    <button
+                        className={mode === "leadtime" ? "mode active" : "mode"}
+                        onClick={() => setMode("leadtime")}
+                    >
                         Ошибка по lead time
                     </button>
                 </div>
@@ -151,7 +152,7 @@ export function App() {
             {loading && <p className="muted">Загружаю прогноз…</p>}
             {error && <div className="card err">{error}</div>}
 
-            {forecast.length > 0 && (
+            {mode === "forecast" && forecast.length > 0 && (
                 <table className="forecast">
                     <thead>
                     <tr>
@@ -173,7 +174,7 @@ export function App() {
                     </tbody>
                 </table>
             )}
-            {Object.keys(comparison).length > 0 && (
+            {mode === "comparison" && Object.keys(comparison).length > 0 && (
                 <>
                     {Object.entries(comparison).map(([provider, rows]) => (
                         <div key={provider} className="provider-section">
@@ -207,7 +208,7 @@ export function App() {
                     <ErrorChart comparisonByProvider={comparison} />
                 </>
             )}
-            {Object.keys(statsByProvider).length > 0 && (
+            {mode === "leadtime" && Object.keys(statsByProvider).length > 0 && (
                 <LeadTimeChart statsByProvider={statsByProvider} />
             )}
 
