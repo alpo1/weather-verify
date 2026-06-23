@@ -10,6 +10,7 @@ import {collectObservations} from "./services/collectObservations";
 import {PROVIDERS} from "./providers";
 import {LocationCreateSchema, IdParamSchema, ObservationsQuerySchema} from "./schemas/locationSchemas";
 import {ZodError} from "zod";
+import {runDailyCollection} from "./services/runDailyCollections";
 
 
 const app = Fastify({
@@ -106,6 +107,26 @@ app.post("/api/locations/:id/forecast", async (request, reply) => {
     }
 
     return { location: location.name, saved };
+});
+app.post("/api/cron/run", async (request, reply) => {
+    const provided = request.headers["x-cron-secret"];
+    const expected = process.env.CRON_SECRET;
+
+    if (!expected) {
+        request.log.error("CRON_SECRET is not set on the server");
+        reply.code(500);
+        return { error: "Cron is not configured" };
+    }
+
+
+    if (provided !== expected) {
+        reply.code(401);
+        return { error: "Unauthorized" };
+    }
+
+    console.log("[http] triggered", new Date().toISOString());
+    await runDailyCollection();
+    return { ok: true, triggeredAt: new Date().toISOString() };
 });
 app.post("/api/locations/:id/observations", async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
