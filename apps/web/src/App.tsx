@@ -208,8 +208,14 @@ export function App() {
                     <ErrorChart comparisonByProvider={comparison} />
                 </>
             )}
+            {mode === "comparison" && !loading && Object.keys(comparison).length === 0 && (
+                <p className="muted">Currently there is no matching between forecast and an observation. The data is still gathering.</p>
+            )}
             {mode === "leadtime" && Object.keys(statsByProvider).length > 0 && (
                 <LeadTimeChart statsByProvider={statsByProvider} />
+            )}
+            {mode === "leadtime" && !loading && Object.keys(statsByProvider).length === 0 && (
+                <p className="muted">Currently there is no stats for lead time — expected gathered observation data.</p>
             )}
 
         </main>
