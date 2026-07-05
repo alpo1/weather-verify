@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { ErrorChart } from "./ErrorChart";
 import {LeadTimeChart} from "./LeadTimeChart";
 import type {ComparisonRow, LeadTimeStat} from "@weather-verify/shared";
+import { useAuth } from "./AuthContext";       // ← ДОБАВЛЕНО
+import { AuthScreen } from "./AuthScreen";     // ← ДОБАВЛЕНО
+import { api } from "./api";                   // ← ДОБАВЛЕНО
 
 type Mode = "forecast" | "comparison"| "leadtime";
 
@@ -45,22 +48,24 @@ function errorClass(err: number | null): string {
 }
 
 export function App() {
+    const { user, loading, logout } = useAuth();   // ← ДОБАВЛЕНО (первой строкой в App)
     const [locations, setLocations] = useState<Location[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [mode, setMode] = useState<Mode>("forecast");
     const [forecast, setForecast] = useState<DailyForecast[]>([]);
     const [comparison, setComparison] = useState<Record<string, ComparisonRow[]>>({});
     const [statsByProvider, setStatsByProvider] = useState<Record<string, LeadTimeStat[]>>({});
-    const [loading, setLoading] = useState(false);
+    const [loadingData, setLoadingData] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Загрузить список локаций один раз при открытии страницы.
+    // ← ИЗМЕНЕНО: грузим локации только когда залогинены, через api() (шлёт cookie).
     useEffect(() => {
-        fetch("/api/locations")
+        if (!user) return;
+        api("/api/locations")
             .then((res) => res.json())
             .then((data: Location[]) => setLocations(data))
             .catch(() => setError("Не удалось загрузить локации"));
-    }, []);
+    }, [user]);
 
     // Грузим данные текущего режима при смене локации ИЛИ режима.
     useEffect(() => {
@@ -68,24 +73,24 @@ export function App() {
         if (!id) return;
 
         let cancelled = false;
-        setLoading(true);
+        setLoadingData(true);
         setError(null);
 
         async function load() {
             try {
                 if (mode === "forecast") {
-                    const res = await fetch(`/api/locations/${id}/forecast`);
+                    const res = await api(`/api/locations/${id}/forecast`);   // ← fetch → api
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const data: ForecastResponse = await res.json();
                     if (!cancelled) setForecast(data.forecast);
                 } else if (mode === "comparison") {
-                    const res = await fetch(`/api/locations/${id}/comparison`);
+                    const res = await api(`/api/locations/${id}/comparison`);  // ← fetch → api
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const data: { comparisonByProvider: Record<string, ComparisonRow[]> } =
                         await res.json();
                     if (!cancelled) setComparison(data.comparisonByProvider);
                 } else {
-                    const res = await fetch(`/api/locations/${id}/lead-time-stats`);
+                    const res = await api(`/api/locations/${id}/lead-time-stats`);  // ← fetch → api
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const data: { statsByProvider: Record<string, LeadTimeStat[]> } =
                         await res.json();
@@ -94,7 +99,7 @@ export function App() {
             } catch {
                 if (!cancelled) setError("Не удалось загрузить данные");
             } finally {
-                if (!cancelled) setLoading(false);
+                if (!cancelled) setLoadingData(false);
             }
         }
 
@@ -105,11 +110,24 @@ export function App() {
         };
     }, [selectedId, mode]);
 
+    // ← ДОБАВЛЕНО: гейтинг. Обязательно ПОСЛЕ всех хуков, ДО главного return.
+    if (loading) {
+        return <main className="shell"><p className="muted">Загрузка…</p></main>;
+    }
+    if (!user) {
+        return <AuthScreen />;
+    }
 
     return (
         <main className="shell">
             <h1>Weather Verify</h1>
             <p className="sub">Прогнозы по локациям</p>
+
+            {/* ← ДОБАВЛЕНО: шапка с email и выходом */}
+            <div className="topbar">
+                <span className="muted">{user.email}</span>
+                <button type="button" className="link" onClick={logout}>Выйти</button>
+            </div>
 
             <div className="locations">
                 {locations.map((loc) => (
@@ -149,7 +167,7 @@ export function App() {
                 </div>
             )}
 
-            {loading && <p className="muted">Загружаю прогноз…</p>}
+            {loadingData && <p className="muted">Загружаю прогноз…</p>}
             {error && <div className="card err">{error}</div>}
 
             {mode === "forecast" && forecast.length > 0 && (
@@ -208,13 +226,13 @@ export function App() {
                     <ErrorChart comparisonByProvider={comparison} />
                 </>
             )}
-            {mode === "comparison" && !loading && Object.keys(comparison).length === 0 && (
+            {mode === "comparison" && !loadingData && Object.keys(comparison).length === 0 && (
                 <p className="muted">Currently there is no matching between forecast and an observation. The data is still gathering.</p>
             )}
             {mode === "leadtime" && Object.keys(statsByProvider).length > 0 && (
                 <LeadTimeChart statsByProvider={statsByProvider} />
             )}
-            {mode === "leadtime" && !loading && Object.keys(statsByProvider).length === 0 && (
+            {mode === "leadtime" && !loadingData && Object.keys(statsByProvider).length === 0 && (
                 <p className="muted">Currently there is no stats for lead time — expected gathered observation data.</p>
             )}
 

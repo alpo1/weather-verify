@@ -11,6 +11,15 @@ import {PROVIDERS} from "./providers";
 import {LocationCreateSchema, IdParamSchema, ObservationsQuerySchema} from "./schemas/locationSchemas";
 import {ZodError} from "zod";
 import {runDailyCollection} from "./services/runDailyCollections";
+import { RegisterSchema } from "./schemas/authSchemas";
+import { hashPassword } from "./utils/password";
+import { Prisma } from "./generated/prisma/client";
+import cookie from "@fastify/cookie";
+import { LoginSchema } from "./schemas/authSchemas";
+import { verifyPassword, getDummyHash } from "./utils/password";
+import { signAuthToken } from "./utils/jwt";
+import { requireAuth } from "./hooks/requireAuth";
+import { getOwnedLocation } from "./services/getOwnedLocations";
 
 
 const app = Fastify({
@@ -20,6 +29,54 @@ const app = Fastify({
             options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" },
         },
     },
+});
+app.register(cookie);
+app.post("/api/auth/login", async (request, reply) => {
+    const { email, password } = LoginSchema.parse(request.body);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    const hashToCheck = user?.passwordHash ?? (await getDummyHash());
+    const ok = await verifyPassword(password, hashToCheck);
+
+    if (!user || !ok) {
+        return reply.code(401).send({ error: "invalid email or password" });
+    }
+
+    const token = signAuthToken(user.id);
+
+    reply.setCookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7, // 7 дней (в секундах)
+    });
+
+    return reply.send({ user: { id: user.id, email: user.email } });
+});
+
+app.post("/api/auth/logout", async (request, reply) => {
+    reply.clearCookie("token", { path: "/" });
+    return reply.send({ ok: true });
+});
+
+app.get("/api/auth/me", { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.userId;
+    if (!userId) {
+        return reply.code(401).send({ error: "authentication required" });
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, createdAt: true },
+    });
+
+    if (!user) {
+        return reply.code(401).send({ error: "authentication required" });
+    }
+
+    return reply.send({ user });
 });
 app.setErrorHandler((error, request, reply) => {
 
@@ -59,31 +116,46 @@ app.get("/api/health", async (): Promise<HealthResponse> => {
 });
 
 const port = Number(process.env.PORT ?? 3000);
-app.get("/api/locations/count", async () => {
-    const count = await prisma.location.count();
+app.get("/api/locations/count", { preHandler: requireAuth }, async (request) => {
+    const userId = request.userId!;
+    const count = await prisma.location.count({
+        where: { userLocations: { some: { userId } } },
+    });
     return { count };
 });
-app.post("/api/locations", async (request, reply) => {
+
+app.get("/api/locations", { preHandler: requireAuth }, async (request) => {
+    const userId = request.userId!;
+    return prisma.location.findMany({
+        where: { userLocations: { some: { userId } } },
+    });
+});
+
+app.post("/api/locations", { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.userId!;
     const body = LocationCreateSchema.parse(request.body);
 
-    const location = await prisma.location.create({
-        data: body,
+    const location = await prisma.location.upsert({
+        where: { lat_lon: { lat: body.lat, lon: body.lon } },
+        update: {},
+        create: body,
     });
 
-    return location;
+    await prisma.userLocation.upsert({
+        where: { userId_locationId: { userId, locationId: location.id } },
+        update: {},
+        create: { userId, locationId: location.id },
+    });
+
+    return reply.code(201).send(location);
 });
 
-// Вернуть все локации.
-app.get("/api/locations", async () => {
-    return prisma.location.findMany();
-});
 
-
-
-app.get("/api/locations/:id/forecast", async (request, reply) => {
+app.get("/api/locations/:id/forecast", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
 
-    const location = await prisma.location.findUnique({ where: { id } });
+    const userId = request.userId!;
+    const location = await getOwnedLocation(userId, id);
     if (!location) {
         return reply.code(404).send({ error: "Локация не найдена" });
     }
@@ -94,10 +166,11 @@ app.get("/api/locations/:id/forecast", async (request, reply) => {
 });
 
 // Тянет прогноз Open-Meteo и СОХРАНЯЕТ его в базу.
-app.post("/api/locations/:id/forecast", async (request, reply) => {
+app.post("/api/locations/:id/forecast", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
 
-    const location = await prisma.location.findUnique({ where: { id } });
+    const userId = request.userId!;
+    const location = await getOwnedLocation(userId, id);
     if (!location) {
         return reply.code(404).send({ error: "Локация не найдена" });
     }
@@ -128,22 +201,24 @@ app.post("/api/cron/run", async (request, reply) => {
     await runDailyCollection();
     return { ok: true, triggeredAt: new Date().toISOString() };
 });
-app.post("/api/locations/:id/observations", async (request, reply) => {
+app.post("/api/locations/:id/observations", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
     const { days } = ObservationsQuerySchema.parse(request.query);
 
-    const location = await prisma.location.findUnique({where: {id}});
+    const userId = request.userId!;
+    const location = await getOwnedLocation(userId, id);
     if (!location) {
-        return reply.code(404).send({error: "Локация не найдена"});
+        return reply.code(404).send({ error: "Локация не найдена" });
     }
 
     const result = await collectObservations(location, days);
     return {location: location.name, ...result};
 });
-app.get("/api/locations/:id/comparison", async (request, reply) => {
+app.get("/api/locations/:id/comparison", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
 
-    const location = await prisma.location.findUnique({ where: { id } });
+    const userId = request.userId!;
+    const location = await getOwnedLocation(userId, id);
     if (!location) {
         return reply.code(404).send({ error: "Локация не найдена" });
     }
@@ -205,10 +280,11 @@ app.get("/api/locations/:id/comparison", async (request, reply) => {
 
 // Загружает "прошлый прогноз" на уже прошедшие даты (для демонстрации сравнения).
 // Использует тот же Archive API, что и факт, но кладёт данные в Forecast.
-app.post("/api/locations/:id/backfill-forecast", async (request, reply) => {
+app.post("/api/locations/:id/backfill-forecast",{ preHandler: requireAuth }, async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
 
-    const location = await prisma.location.findUnique({ where: { id } });
+    const userId = request.userId!;
+    const location = await getOwnedLocation(userId, id);
     if (!location) {
         return reply.code(404).send({ error: "Локация не найдена" });
     }
@@ -265,12 +341,13 @@ app.post("/api/locations/:id/backfill-forecast", async (request, reply) => {
     return { location: location.name, from: fmt(fromDate), to: fmt(toDate), saved };
 });
 
-app.post("/api/locations/:id/backfill-previous-runs", async (request, reply) => {
+app.post("/api/locations/:id/backfill-previous-runs",{ preHandler: requireAuth }, async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
 
-    const location = await prisma.location.findUnique({ where: { id } });
+    const userId = request.userId!;
+    const location = await getOwnedLocation(userId, id);
     if (!location) {
-        return reply.status(404).send({ error: "Локация не найдена" });
+        return reply.code(404).send({ error: "Локация не найдена" });
     }
 
     const days = await fetchPreviousRuns(location.lat, location.lon, location.timezone);
@@ -313,9 +390,14 @@ app.post("/api/locations/:id/backfill-previous-runs", async (request, reply) => 
     return { saved, location: location.name };
 });
 
-app.get("/api/locations/:id/lead-time-stats", async (request) => {
+app.get("/api/locations/:id/lead-time-stats",{ preHandler: requireAuth }, async (request, reply) => {
     const { id } = IdParamSchema.parse(request.params);
 
+    const userId = request.userId!;
+    const location = await getOwnedLocation(userId, id);
+    if (!location) {
+        return reply.code(404).send({ error: "Локация не найдена" });
+    }
     const [forecasts, observations] = await Promise.all([
         prisma.forecast.findMany({ where: { locationId: id } }),
         prisma.observation.findMany({ where: { locationId: id } }),
@@ -379,6 +461,28 @@ app.get("/api/locations/:id/lead-time-stats", async (request) => {
     }
 
     return { statsByProvider };
+});
+
+app.post("/api/auth/register", async (request, reply) => {
+    const { email, password } = RegisterSchema.parse(request.body);
+
+    const passwordHash = await hashPassword(password);
+
+    try {
+        const user = await prisma.user.create({
+            data: { email, passwordHash },
+            select: { id: true, email: true, createdAt: true },
+        });
+        return reply.code(201).send({ user });
+    } catch (error) {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002"
+        ) {
+            return reply.code(409).send({ error: "email already registered" });
+        }
+        throw error;
+    }
 });
 
 app.listen({ port, host: "0.0.0.0" }).then(()=> {startCron()}).catch((err) => {
