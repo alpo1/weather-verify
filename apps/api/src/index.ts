@@ -22,13 +22,17 @@ import { requireAuth } from "./hooks/requireAuth";
 import { getOwnedLocation } from "./services/getOwnedLocations";
 
 
+const isProd = process.env.NODE_ENV === "production";
+
 const app = Fastify({
-    logger: {
-        transport: {
-            target: "pino-pretty",
-            options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" },
+    logger: isProd
+        ? true
+        : {
+            transport: {
+                target: "pino-pretty",
+                options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" },
+            },
         },
-    },
 });
 app.register(cookie);
 app.post("/api/auth/login", async (request, reply) => {
