@@ -80,3 +80,44 @@ h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
 .err-good { color: var(--ok); }
 .err-mid { color: #d2a106; }
 .err-bad { color: var(--err); }
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0 20px;
+}
+.add-location {
+    margin-bottom: 20px;
+}
+.add-form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.add-form input {
+    flex: 1;
+    padding: 8px 10px;
+    background: #1a1d24;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: inherit;
+    font: inherit;
+}
+.geo-results {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.geo-results li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    background: #1a1d24;
+    border: 1px solid #2a2e37;
+    border-radius: 6px;
+}

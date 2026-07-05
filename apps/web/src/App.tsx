@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { AddLocation } from "./AddLocation";
 import { ErrorChart } from "./ErrorChart";
 import {LeadTimeChart} from "./LeadTimeChart";
 import type {ComparisonRow, LeadTimeStat} from "@weather-verify/shared";
@@ -58,14 +59,17 @@ export function App() {
     const [loadingData, setLoadingData] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // ← ИЗМЕНЕНО: грузим локации только когда залогинены, через api() (шлёт cookie).
-    useEffect(() => {
-        if (!user) return;
+    const loadLocations = useCallback(() => {
         api("/api/locations")
             .then((res) => res.json())
             .then((data: Location[]) => setLocations(data))
             .catch(() => setError("Не удалось загрузить локации"));
-    }, [user]);
+    }, []);
+
+    useEffect(() => {
+        if (!user) return;
+        loadLocations();
+    }, [user, loadLocations]);
 
     // Грузим данные текущего режима при смене локации ИЛИ режима.
     useEffect(() => {
@@ -128,7 +132,7 @@ export function App() {
                 <span className="muted">{user.email}</span>
                 <button type="button" className="link" onClick={logout}>Выйти</button>
             </div>
-
+            <AddLocation onAdded={loadLocations} />
             <div className="locations">
                 {locations.map((loc) => (
                     <button
