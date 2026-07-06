@@ -18,6 +18,7 @@ export const LocationCreateSchema = z.object({
         .string()
         .min(1, "timezone: expected not to be empty")
         .refine(isValidTimeZone, "timezone: unknown IANA zone (e.g. Asia/Jerusalem)"),
+    geonameId: z.number().int().positive().optional(),
 });
 
 export const IdParamSchema = z.object({

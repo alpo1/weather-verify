@@ -139,11 +139,20 @@ app.post("/api/locations", { preHandler: requireAuth }, async (request, reply) =
     const userId = request.userId!;
     const body = LocationCreateSchema.parse(request.body);
 
-    const location = await prisma.location.upsert({
-        where: { lat_lon: { lat: body.lat, lon: body.lon } },
-        update: {},
-        create: body,
-    });
+    let location =
+        body.geonameId != null
+            ? await prisma.location.findUnique({
+                where: { geonameId: body.geonameId },
+            })
+            : null;
+
+    if (!location) {
+        location = await prisma.location.upsert({
+            where: { lat_lon: { lat: body.lat, lon: body.lon } },
+            update: { geonameId: body.geonameId },
+            create: body,
+        });
+    }
 
     await prisma.userLocation.upsert({
         where: { userId_locationId: { userId, locationId: location.id } },

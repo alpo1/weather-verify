@@ -22,6 +22,7 @@ generator client {
    lon       Float
    timezone  String
    gismeteoId Int?
+   geonameId  Int?  @unique
    createdAt DateTime @default(now())
 
    forecasts Forecast[]

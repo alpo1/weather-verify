@@ -59,6 +59,7 @@ export function AddLocation({ onAdded }: { onAdded: () => void }) {
                     lat: r.latitude,
                     lon: r.longitude,
                     timezone: r.timezone,
+                    geonameId: r.id
                 }),
             });
             if (!res.ok) {
