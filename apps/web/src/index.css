@@ -121,3 +121,16 @@ h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
     border: 1px solid #2a2e37;
     border-radius: 6px;
 }
+
+.app-footer {
+    margin-top: 2rem;
+    padding: 1rem 0;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #888;
+    border-top: 1px solid #333;
+}
+
+.app-footer a {
+    color: #aaa;
+}

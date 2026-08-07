@@ -239,6 +239,13 @@ export function App() {
             {mode === "leadtime" && !loadingData && Object.keys(statsByProvider).length === 0 && (
                 <p className="muted">Currently there is no stats for lead time — expected gathered observation data.</p>
             )}
+<footer className="app-footer">
+                Weather data by{" "}
+                <a href="https://open-meteo.com" target="_blank" rel="noopener noreferrer">
+                    Open-Meteo.com
+                </a>
+                {" "}· forecasts also from Gismeteo and WeatherAPI.com
+            </footer>
 
         </main>
     );
