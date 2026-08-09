@@ -4,6 +4,7 @@ import {
     CartesianGrid, Tooltip, Legend, ReferenceLine,
 } from "recharts";
 import type { ComparisonRow } from "@weather-verify/shared";
+import { ChartTooltip } from "./components/ChartTooltip";
 
 
 
@@ -13,10 +14,13 @@ type Props = {
 
 // палитра: какому провайдеру какой цвет линии
 const COLORS: Record<string, string> = {
-    "open-meteo": "#e74c3c",
-    "weatherapi": "#2ecc71",
+    "open-meteo": "#4f46e5",
+    "weatherapi": "#10b981",
+    "gismeteo": "#f59e0b",
 };
-const FALLBACK_COLORS = ["#9b59b6", "#f39c12", "#1abc9c", "#e67e22"];
+const FALLBACK_COLORS = ["#64748b", "#0ea5e9", "#a855f7"];
+
+const tickStyle = { fontSize: 12, fill: "#94a3b8" };
 
 export function ErrorChart({ comparisonByProvider }: Props) {
 
@@ -60,54 +64,64 @@ export function ErrorChart({ comparisonByProvider }: Props) {
     );
 
     if (chartData.length === 0) {
-        return <p>Нет данных для графика (нужны прогнозы с lead = 1 и факт).</p>;
+        return (
+            <div className="py-2 text-sm text-slate-500">
+                Нет данных для графика — нужны прогнозы с lead = 1 и подтверждённый факт.
+            </div>
+        );
     }
 
     return (
         <div>
             {/* переключатель метрики */}
-            <div style={{marginBottom: 8, display: "flex", gap: 8}}>
+            <div className="mb-3 inline-flex gap-1 rounded-lg bg-slate-100 p-1">
                 <button
                     onClick={() => setMetric("max")}
-                    style={{fontWeight: metric === "max" ? "bold" : "normal"}}
+                    className={
+                        metric === "max"
+                            ? "rounded-md bg-white px-3 py-1 text-xs font-medium text-indigo-600 shadow-sm transition-colors"
+                            : "rounded-md px-3 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700"
+                    }
                 >
                     Tmax
                 </button>
                 <button
                     onClick={() => setMetric("min")}
-                    style={{fontWeight: metric === "min" ? "bold" : "normal"}}
+                    className={
+                        metric === "min"
+                            ? "rounded-md bg-white px-3 py-1 text-xs font-medium text-indigo-600 shadow-sm transition-colors"
+                            : "rounded-md px-3 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700"
+                    }
                 >
                     Tmin
                 </button>
             </div>
-            <div style={{ marginBottom: 8, color: "#888", fontSize: 14 }}>
+            <div className="mb-2 text-xs text-slate-500">
                 Ошибка {metricLabel} (прогноз − факт), горизонт lead = 1
             </div>
 
-            {chartData.length === 0 ? (
-                <p>Нет данных для графика (нужны прогнозы с lead = 1 и факт).</p>
-            ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={chartData} margin={{top: 10, right: 20, bottom: 10, left: 0}}>
-                        <CartesianGrid strokeDasharray="3 3"/>
-                        <XAxis dataKey="date"/>
-                        <YAxis unit="°"/>
-                        <Tooltip/>
-                        <Legend/>
-                        <ReferenceLine y={0} stroke="#888"/>
-                        {providers.map((provider, i) => (
-                            <Line
-                                key={provider}
-                                type="monotone"
-                                dataKey={provider}
-                                name={provider}
-                                stroke={COLORS[provider] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
-                                connectNulls
-                            />
-                        ))}
-                    </LineChart>
-                </ResponsiveContainer>
-            )}
+            <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={chartData} margin={{top: 10, right: 20, bottom: 10, left: 0}}>
+                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="date" tick={tickStyle} axisLine={false} tickLine={false} />
+                    <YAxis unit="°" tick={tickStyle} axisLine={false} tickLine={false} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} verticalAlign="top" align="left" height={32} iconType="circle" iconSize={8} />
+                    <ReferenceLine y={0} stroke="#cbd5e1" />
+                    {providers.map((provider, i) => (
+                        <Line
+                            key={provider}
+                            type="monotone"
+                            dataKey={provider}
+                            name={provider}
+                            stroke={COLORS[provider] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            connectNulls
+                        />
+                    ))}
+                </LineChart>
+            </ResponsiveContainer>
         </div>
     );
 }

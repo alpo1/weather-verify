@@ -6,6 +6,8 @@ import type {ComparisonRow, LeadTimeStat} from "@weather-verify/shared";
 import { useAuth } from "./AuthContext";       // ← ДОБАВЛЕНО
 import { AuthScreen } from "./AuthScreen";     // ← ДОБАВЛЕНО
 import { api } from "./api";                   // ← ДОБАВЛЕНО
+import { Card } from "./components/Card";
+import { Button } from "./components/Button";
 
 type Mode = "forecast" | "comparison"| "leadtime";
 
@@ -39,13 +41,24 @@ function formatError(err: number): string {
     return String(err);
 }
 
-// Класс для подсветки: близко к нулю — хорошо, далеко — плохо.
-function errorClass(err: number | null): string {
-    if (err == null) return "";
+// Бейдж-классы для подсветки ошибки: близко к нулю — хорошо, далеко — плохо.
+function errorBadgeClasses(err: number | null): string {
+    if (err == null) return "bg-slate-100 text-slate-500";
     const abs = Math.abs(err);
-    if (abs < 1) return "err-good";
-    if (abs < 3) return "err-mid";
-    return "err-bad";
+    if (abs < 1) return "bg-emerald-50 text-emerald-700";
+    if (abs < 3) return "bg-amber-50 text-amber-700";
+    return "bg-rose-50 text-rose-700";
+}
+
+// Строки-скелетоны на время загрузки — по форме похожи на итоговую таблицу.
+function TableSkeleton() {
+    return (
+        <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-8 animate-pulse rounded bg-slate-100" />
+            ))}
+        </div>
+    );
 }
 
 export function App() {
@@ -58,6 +71,7 @@ export function App() {
     const [statsByProvider, setStatsByProvider] = useState<Record<string, LeadTimeStat[]>>({});
     const [loadingData, setLoadingData] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [reloadKey, setReloadKey] = useState(0);
 
     const loadLocations = useCallback(() => {
         api("/api/locations")
@@ -112,141 +126,207 @@ export function App() {
         return () => {
             cancelled = true;
         };
-    }, [selectedId, mode]);
+    }, [selectedId, mode, reloadKey]);
 
     // ← ДОБАВЛЕНО: гейтинг. Обязательно ПОСЛЕ всех хуков, ДО главного return.
     if (loading) {
-        return <main className="shell"><p className="muted">Загрузка…</p></main>;
+        return (
+            <main className="flex min-h-screen items-center justify-center bg-slate-50">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
+            </main>
+        );
     }
     if (!user) {
         return <AuthScreen />;
     }
 
     return (
-        <main className="shell">
-            <h1>Weather Verify</h1>
-            <p className="sub">Прогнозы по локациям</p>
-
-            {/* ← ДОБАВЛЕНО: шапка с email и выходом */}
-            <div className="topbar">
-                <span className="muted">{user.email}</span>
-                <button type="button" className="link" onClick={logout}>Выйти</button>
-            </div>
-            <AddLocation onAdded={loadLocations} />
-            <div className="locations">
-                {locations.map((loc) => (
-                    <button
-                        key={loc.id}
-                        className={loc.id === selectedId ? "loc active" : "loc"}
-                        onClick={() => {
-                            setSelectedId(loc.id);
-                            setMode("forecast");
-                        }}
-                    >
-                        {loc.name}
-                        {loc.country ? `, ${loc.country}` : ""}
-                    </button>
-                ))}
-            </div>
-            {selectedId && (
-                <div className="modes">
-                    <button
-                        className={mode === "forecast" ? "mode active" : "mode"}
-                        onClick={() => setMode("forecast")}
-                    >
-                        Прогноз
-                    </button>
-                    <button
-                        className={mode === "comparison" ? "mode active" : "mode"}
-                        onClick={() => setMode("comparison")}
-                    >
-                        Сравнение
-                    </button>
-                    <button
-                        className={mode === "leadtime" ? "mode active" : "mode"}
-                        onClick={() => setMode("leadtime")}
-                    >
-                        Ошибка по lead time
-                    </button>
+        <main className="min-h-screen bg-slate-50">
+            <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h1 className="text-2xl font-semibold text-slate-900">Weather Verify</h1>
+                        <p className="text-sm text-slate-500">Прогнозы по локациям</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <span className="text-xs text-slate-500">{user.email}</span>
+                        <button
+                            type="button"
+                            className="text-xs font-medium text-slate-500 transition-colors hover:text-indigo-600"
+                            onClick={logout}
+                        >
+                            Выйти
+                        </button>
+                    </div>
                 </div>
-            )}
 
-            {loadingData && <p className="muted">Загружаю прогноз…</p>}
-            {error && <div className="card err">{error}</div>}
+                <AddLocation onAdded={loadLocations} />
 
-            {mode === "forecast" && forecast.length > 0 && (
-                <table className="forecast">
-                    <thead>
-                    <tr>
-                        <th>Дата</th>
-                        <th>Мин °C</th>
-                        <th>Макс °C</th>
-                        <th>Осадки, мм</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {forecast.map((day) => (
-                        <tr key={day.targetDate}>
-                            <td>{day.targetDate}</td>
-                            <td>{day.tempMin ?? "—"}</td>
-                            <td>{day.tempMax ?? "—"}</td>
-                            <td>{day.precipMm ?? "—"}</td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
-            )}
-            {mode === "comparison" && Object.keys(comparison).length > 0 && (
-                <>
-                    {Object.entries(comparison).map(([provider, rows]) => (
-                        <div key={provider} className="provider-section">
-                            <h3>{provider}</h3>
-                            <table className="forecast">
+                <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                        {locations.map((loc) => {
+                            const active = loc.id === selectedId;
+                            return (
+                                <button
+                                    key={loc.id}
+                                    className={
+                                        active
+                                            ? "rounded-full border border-indigo-600 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-600 transition-colors"
+                                            : "rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 transition-colors hover:border-slate-300"
+                                    }
+                                    onClick={() => {
+                                        setSelectedId(loc.id);
+                                        setMode("forecast");
+                                    }}
+                                >
+                                    {loc.name}
+                                    {loc.country ? `, ${loc.country}` : ""}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {locations.length === 0 && (
+                        <p className="text-xs text-slate-500">
+                            Пока нет локаций — добавьте город через поиск выше.
+                        </p>
+                    )}
+                </div>
+
+                {selectedId && (
+                    <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1">
+                        {(
+                            [
+                                { key: "forecast", label: "Прогноз" },
+                                { key: "comparison", label: "Сравнение" },
+                                { key: "leadtime", label: "Ошибка по lead time" },
+                            ] as const
+                        ).map((tab) => (
+                            <button
+                                key={tab.key}
+                                className={
+                                    mode === tab.key
+                                        ? "rounded-md bg-white px-3 py-1.5 text-sm font-medium text-indigo-600 shadow-sm transition-colors"
+                                        : "rounded-md px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-700"
+                                }
+                                onClick={() => setMode(tab.key)}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {!selectedId && (
+                    <p className="text-sm text-slate-500">
+                        Выберите локацию выше, чтобы увидеть прогноз.
+                    </p>
+                )}
+
+                {error && (
+                    <div className="flex items-center justify-between gap-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                        <span>{error}</span>
+                        <Button variant="secondary" className="shrink-0" onClick={() => setReloadKey((k) => k + 1)}>
+                            Повторить
+                        </Button>
+                    </div>
+                )}
+
+                {loadingData && !error && (
+                    <Card>
+                        <TableSkeleton />
+                    </Card>
+                )}
+
+                {!loadingData && mode === "forecast" && forecast.length > 0 && (
+                    <Card title="Прогноз" description="Ежедневный прогноз для выбранной локации.">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
                                 <thead>
-                                <tr>
-                                    <th>Дата</th>
-                                    <th>Lead</th>
-                                    <th>Прогноз макс</th>
-                                    <th>Факт макс</th>
-                                    <th>Ошибка</th>
+                                <tr className="divide-y divide-slate-100">
+                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Дата</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-500">Мин °C</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-500">Макс °C</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-500">Осадки, мм</th>
                                 </tr>
                                 </thead>
-                                <tbody>
-                                {rows.map((row) => (
-                                    <tr key={`${provider}-${row.leadTimeDays}-${row.targetDate}`}>
-                                        <td>{row.targetDate}</td>
-                                        <td>{row.leadTimeDays}</td>
-                                        <td>{row.forecastMax ?? "—"}</td>
-                                        <td>{row.actualMax ?? "—"}</td>
-                                        <td className={errorClass(row.errorMax)}>
-                                            {row.errorMax != null ? formatError(row.errorMax) : "—"}
-                                        </td>
+                                <tbody className="divide-y divide-slate-100">
+                                {forecast.map((day) => (
+                                    <tr key={day.targetDate} className="odd:bg-slate-50">
+                                        <td className="px-3 py-2 text-left text-slate-700">{day.targetDate}</td>
+                                        <td className="px-3 py-2 text-right text-slate-700">{day.tempMin ?? "—"}</td>
+                                        <td className="px-3 py-2 text-right text-slate-700">{day.tempMax ?? "—"}</td>
+                                        <td className="px-3 py-2 text-right text-slate-700">{day.precipMm ?? "—"}</td>
                                     </tr>
                                 ))}
                                 </tbody>
                             </table>
                         </div>
-                    ))}
-                    <ErrorChart comparisonByProvider={comparison} />
-                </>
-            )}
-            {mode === "comparison" && !loadingData && Object.keys(comparison).length === 0 && (
-                <p className="muted">Currently there is no matching between forecast and an observation. The data is still gathering.</p>
-            )}
-            {mode === "leadtime" && Object.keys(statsByProvider).length > 0 && (
-                <LeadTimeChart statsByProvider={statsByProvider} />
-            )}
-            {mode === "leadtime" && !loadingData && Object.keys(statsByProvider).length === 0 && (
-                <p className="muted">Currently there is no stats for lead time — expected gathered observation data.</p>
-            )}
-<footer className="app-footer">
-                Weather data by{" "}
-                <a href="https://open-meteo.com" target="_blank" rel="noopener noreferrer">
-                    Open-Meteo.com
-                </a>
-                {" "}· forecasts also from Gismeteo and WeatherAPI.com
-            </footer>
+                    </Card>
+                )}
+                {!loadingData && mode === "comparison" && Object.keys(comparison).length > 0 && (
+                    <>
+                        {Object.entries(comparison).map(([provider, rows]) => (
+                            <Card key={provider} title={provider} description="Прогноз против факта, по дням.">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                        <tr className="divide-y divide-slate-100">
+                                            <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Дата</th>
+                                            <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-500">Lead</th>
+                                            <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-500">Прогноз макс</th>
+                                            <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-500">Факт макс</th>
+                                            <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-500">Ошибка</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                        {rows.map((row) => (
+                                            <tr key={`${provider}-${row.leadTimeDays}-${row.targetDate}`} className="odd:bg-slate-50">
+                                                <td className="px-3 py-2 text-left text-slate-700">{row.targetDate}</td>
+                                                <td className="px-3 py-2 text-right text-slate-700">{row.leadTimeDays}</td>
+                                                <td className="px-3 py-2 text-right text-slate-700">{row.forecastMax ?? "—"}</td>
+                                                <td className="px-3 py-2 text-right text-slate-700">{row.actualMax ?? "—"}</td>
+                                                <td className="px-3 py-2 text-right">
+                                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${errorBadgeClasses(row.errorMax)}`}>
+                                                        {row.errorMax != null ? formatError(row.errorMax) : "—"}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Card>
+                        ))}
+                        <Card title="Ошибка прогноза" description="Ошибка (прогноз − факт) по датам, горизонт lead = 1.">
+                            <ErrorChart comparisonByProvider={comparison} />
+                        </Card>
+                    </>
+                )}
+                {!loadingData && mode === "comparison" && Object.keys(comparison).length === 0 && (
+                    <p className="text-sm text-slate-500">Currently there is no matching between forecast and an observation. The data is still gathering.</p>
+                )}
+                {!loadingData && mode === "leadtime" && Object.keys(statsByProvider).length > 0 && (
+                    <Card title="Ошибка по горизонту" description="MAE по заблаговременности прогноза — чем ниже, тем точнее.">
+                        <LeadTimeChart statsByProvider={statsByProvider} />
+                    </Card>
+                )}
+                {!loadingData && mode === "leadtime" && Object.keys(statsByProvider).length === 0 && (
+                    <p className="text-sm text-slate-500">Currently there is no stats for lead time — expected gathered observation data.</p>
+                )}
 
+                <footer className="border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
+                    Weather data by{" "}
+                    <a
+                        href="https://open-meteo.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-600 underline decoration-slate-300 underline-offset-2 transition-colors hover:text-indigo-600"
+                    >
+                        Open-Meteo.com
+                    </a>
+                    {" "}· forecasts also from Gismeteo and WeatherAPI.com
+                </footer>
+            </div>
         </main>
     );
 }

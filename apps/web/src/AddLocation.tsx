@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
+import { Button } from "./components/Button";
 
 // Один результат geocoding Open-Meteo (берём только нужные поля; остальные игнорируем).
 interface GeoResult {
@@ -78,37 +79,46 @@ export function AddLocation({ onAdded }: { onAdded: () => void }) {
     }
 
     return (
-        <div className="add-location">
-            <form className="add-form" onSubmit={search}>
+        <div>
+            <form className="flex gap-2" onSubmit={search}>
                 <input
                     type="text"
                     placeholder="Добавить город, например Haifa"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                <button type="submit" disabled={searching}>
+                <Button type="submit" variant="secondary" disabled={searching}>
                     {searching ? "…" : "Найти"}
-                </button>
+                </Button>
             </form>
 
-            {error && <div className="card err">{error}</div>}
+            {error && (
+                <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                    {error}
+                </div>
+            )}
 
             {results.length > 0 && (
-                <ul className="geo-results">
+                <ul className="mt-3 flex flex-col gap-2">
                     {results.map((r) => (
-                        <li key={r.id}>
-                            <span>
+                        <li
+                            key={r.id}
+                            className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        >
+                            <span className="text-slate-700">
                                 {r.name}
                                 {r.admin1 ? `, ${r.admin1}` : ""}
                                 {r.country ? ` (${r.country})` : ""}
                             </span>
-                            <button
+                            <Button
                                 type="button"
                                 onClick={() => add(r)}
                                 disabled={addingId === r.id}
+                                className="shrink-0"
                             >
                                 {addingId === r.id ? "…" : "Добавить"}
-                            </button>
+                            </Button>
                         </li>
                     ))}
                 </ul>
